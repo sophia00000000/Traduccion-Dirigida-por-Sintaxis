@@ -1,32 +1,9 @@
-# ESQUEMA DE TRADUCCIÓN DIRIGIDO POR LA SINTAXIS (EDTS)
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-"""
-GRAMÁTICA DE ATRIBUTOS:
-
-E → E₁ + T    { E.val = E₁.val + T.val }
-E → E₁ - T    { E.val = E₁.val - T.val }
-E → T         { E.val = T.val }
-
-T → T₁ * F    { T.val = T₁.val * F.val }
-T → T₁ / F    { T.val = T₁.val / F.val }
-T → F         { T.val = F.val }
-
-F → (E)       { F.val = E.val }
-F → num       { F.val = num.lexval }
-F → id        { F.val = tabla[id.lexema] }
-
-ATRIBUTOS:
-- val: atributo sintetizado (valor calculado)
-- lexema: atributo sintetizado (identificador o número)
-"""
-
-# 2. TABLA DE SÍMBOLOS
-
+#TABLA DE SÍMBOLOS
 @dataclass
 class Simbolo:
-    """Entrada en la tabla de símbolos"""
     nombre: str
     tipo: str
     valor: Any
@@ -49,23 +26,21 @@ class TablaSimbolos:
     def imprimir(self):
         print("TABLA DE SÍMBOLOS")
         if not self.simbolos:
-            print("(vacía - no hay variables definidas)")
+            print("(no hay variables definidas)")
         else:
             print(f"{'Nombre':<15} {'Tipo':<10} {'Valor':<15} {'Línea':<10}")
             for sym in self.simbolos.values():
                 print(f"{sym.nombre:<15} {sym.tipo:<10} {str(sym.valor):<15} {sym.linea:<10}")
 
-# 3. NODOS DEL AST (Árbol de Sintaxis Abstracta)
+
+# 2. NODOS DEL AST (Árbol de Sintaxis Abstracta)
 @dataclass
 class NodoAST:
-    """Clase base para nodos del AST"""
     tipo: str
-    
     def evaluar(self, tabla: TablaSimbolos) -> Any:
         raise NotImplementedError
     
     def imprimir_arbol(self, prefijo="", es_ultimo=True, con_valores=True, tabla=None):
-        """Imprime el árbol en formato visual ASCII"""
         raise NotImplementedError
 
 @dataclass
@@ -156,18 +131,12 @@ class NodoBinario(NodoAST):
         else:
             print(f"{prefijo}{conector}OP({self.operador})")
         
-        # Extensión del prefijo para los hijos
         extension = "    " if es_ultimo else "│   "
-        
-        # Imprimir hijo izquierdo
         self.izq.imprimir_arbol(prefijo + extension, False, con_valores, tabla)
-        
-        # Imprimir hijo derecho
         self.der.imprimir_arbol(prefijo + extension, True, con_valores, tabla)
 
 @dataclass
 class NodoAsignacion(NodoAST):
-    """Nodo de asignación"""
     variable: str
     expresion: NodoAST
     linea: int
@@ -194,12 +163,11 @@ class NodoAsignacion(NodoAST):
         else:
             print(f"{prefijo}{conector}ASIG: {self.variable}")
         
-        # Extensión del prefijo para el hijo
         extension = "    " if es_ultimo else "│   "
         self.expresion.imprimir_arbol(prefijo + extension, True, con_valores, tabla)
 
-# 4. ANALIZADOR LÉXICO
 
+# 3. ANALIZADOR LÉXICO
 class Token:
     def __init__(self, tipo: str, valor: Any, linea: int):
         self.tipo = tipo
@@ -220,30 +188,26 @@ class AnalizadorLexico:
         while self.pos < len(self.texto):
             char = self.texto[self.pos]
             
-            # Espacios en blanco
             if char.isspace():
                 if char == '\n':
                     self.linea += 1
                 self.pos += 1
                 continue
             
-            # Números
             if char.isdigit():
                 self.tokens.append(self.leer_numero())
                 continue
             
-            # Identificadores
             if char.isalpha() or char == '_':
                 self.tokens.append(self.leer_identificador())
                 continue
             
-            # Operadores y símbolos
             if char in '+-*/()=':
                 self.tokens.append(Token(char, char, self.linea))
                 self.pos += 1
                 continue
             
-            raise Exception(f"Carácter no reconocido: '{char}' (línea {self.linea})")
+            raise Exception(f"Carácter no reconocido: '{char}'")
         
         self.tokens.append(Token('EOF', None, self.linea))
         return self.tokens
@@ -262,8 +226,8 @@ class AnalizadorLexico:
         valor = self.texto[inicio:self.pos]
         return Token('ID', valor, self.linea)
 
-# 5. ANALIZADOR SINTÁCTICO CON ACCIONES SEMÁNTICAS
 
+# 4. ANALIZADOR SINTÁCTICO
 class AnalizadorSintactico:
     def __init__(self, tokens: List[Token]):
         self.tokens = tokens
@@ -283,33 +247,22 @@ class AnalizadorSintactico:
         else:
             raise Exception(f"Se esperaba '{tipo}', se encontró '{self.token_actual.tipo}' (línea {self.token_actual.linea})")
     
-    # Programa → Sentencia | Sentencia Programa
-    def programa(self) -> List[NodoAST]:
-        sentencias = []
-        while self.token_actual.tipo != 'EOF':
-            sentencias.append(self.sentencia())
-        return sentencias
-    
-    # Sentencia → ID = E | E
     def sentencia(self) -> NodoAST:
         if self.token_actual.tipo == 'ID':
-            # Mirar adelante para ver si es asignación
             if self.pos + 1 < len(self.tokens) and self.tokens[self.pos + 1].tipo == '=':
                 nombre = self.token_actual.valor
                 linea = self.token_actual.linea
-                self.avanzar()  # ID
+                self.avanzar()
                 self.coincidir('=')
                 expr = self.E()
                 return NodoAsignacion(nombre, expr, linea)
         
         return self.E()
     
-    # E → T E'
     def E(self) -> NodoAST:
         nodo = self.T()
         return self.E_prima(nodo)
     
-    # E' → + T E' | - T E' | ε
     def E_prima(self, izq: NodoAST) -> NodoAST:
         if self.token_actual.tipo in ['+', '-']:
             op = self.token_actual.tipo
@@ -319,12 +272,10 @@ class AnalizadorSintactico:
             return self.E_prima(nodo)
         return izq
     
-    # T → F T'
     def T(self) -> NodoAST:
         nodo = self.F()
         return self.T_prima(nodo)
     
-    # T' → * F T' | / F T' | ε
     def T_prima(self, izq: NodoAST) -> NodoAST:
         if self.token_actual.tipo in ['*', '/']:
             op = self.token_actual.tipo
@@ -334,7 +285,6 @@ class AnalizadorSintactico:
             return self.T_prima(nodo)
         return izq
     
-    # F → (E) | NUM | ID
     def F(self) -> NodoAST:
         if self.token_actual.tipo == '(':
             self.avanzar()
@@ -353,108 +303,54 @@ class AnalizadorSintactico:
         else:
             raise Exception(f"Factor inválido: {self.token_actual.tipo} (línea {self.token_actual.linea})")
 
-# 6. CONJUNTOS PRIMEROS, SIGUIENTES Y PRODUCCIONES
 
-PRIMEROS = {
-    'E': {'(', 'NUM', 'ID'},
-    "E'": {'+', '-', 'ε'},
-    'T': {'(', 'NUM', 'ID'},
-    "T'": {'*', '/', 'ε'},
-    'F': {'(', 'NUM', 'ID'}
-}
-SIGUIENTES = {
-    'E': {')', 'EOF', '$'},
-    "E'": {')', 'EOF', '$'},
-    'T': {'+', '-', ')', 'EOF', '$'},
-    "T'": {'+', '-', ')', 'EOF', '$'},
-    'F': {'+', '-', '*', '/', ')', 'EOF', '$'}
-}
-PRODUCCIONES = {
-    'E': [['T', "E'"]],
-    "E'": [['+', 'T', "E'"], ['-', 'T', "E'"], ['ε']],
-    'T': [['F', "T'"]],
-    "T'": [['*', 'F', "T'"], ['/', 'F', "T'"], ['ε']],
-    'F': [['(', 'E', ')'], ['NUM'], ['ID']]
-} 
+# PROCESADOR EDTS 
+def procesar_sentencia(expresion: str, tabla: TablaSimbolos):
+     
+    # PASO 1: Análisis Léxico
+    print("\n[1] ANÁLISIS LÉXICO")
+    lexico = AnalizadorLexico(expresion)
+    tokens = lexico.tokenizar()
+    for token in tokens:
+        if token.tipo != 'EOF':
+            print(f"  {token}")
+    
+    # PASO 2: Análisis Sintáctico
+    sintactico = AnalizadorSintactico(tokens)
+    ast = sintactico.sentencia()
+    
+    # PASO 3: AST sin decorar
+    print("\nAST")
+    ast.imprimir_arbol(con_valores=False, tabla=None)
+    
+    # PASO 4: Evaluación Semántica
+    print("\n EVALUACIÓN SEMÁNTICA")
+    resultado = ast.evaluar(tabla)
+    print(f"Resultado= {resultado}")
+    
+    # PASO 5: AST Decorado
+    print("\nAST DECORADO")
+    ast.imprimir_arbol(con_valores=True, tabla=tabla)
 
-# 7. PROGRAMA PRINCIPAL
+    # PASO 6: Tabla de Símbolos
+    tabla.imprimir()    
+    return resultado
+
 def main():
-
-    # Entrada del usuario
-    print("\nIngrese expresiones (línea vacía para terminar):")
-    
-    lineas = []
+    tabla = TablaSimbolos()
     while True:
-        linea = input("> ")
-        if not linea.strip():
-            break
-        lineas.append(linea)
-    
-    codigo = '\n'.join(lineas)
-    
-    if not codigo.strip():
-        print("No se ingresó código.")
-        return
-    
-    try:
-        # Análisis léxico
-        print("TOKENS GENERADOS")
-        lexico = AnalizadorLexico(codigo)
-        tokens = lexico.tokenizar()
-        for token in tokens:
-            if token.tipo != 'EOF':
-                print(f"  {token}")
-        
-        # Análisis sintáctico y construcción del AST
-        print("AST (Árbol de Sintaxis Abstracta)")
-        sintactico = AnalizadorSintactico(tokens)
-        sentencias = sintactico.programa()
-        
-        # Imprimir árbol sin valores (estructura sintáctica)
-        if len(sentencias) == 1:
-            print("\nEstructura del árbol:")
-            sentencias[0].imprimir_arbol(con_valores=False)
-        else:
-            print("\nEstructura del árbol:")
-            print("PROGRAMA")
-            for i, ast in enumerate(sentencias, 1):
-                print(f"├── Sentencia {i}:")
-                ast.imprimir_arbol("│   ", i == len(sentencias), con_valores=False)
-        
-        # Evaluación semántica
-        print("EVALUACIÓN SEMÁNTICA")
-        tabla = TablaSimbolos()
-        
-        resultados = []
-        for i, ast in enumerate(sentencias, 1):
-            try:
-                resultado = ast.evaluar(tabla)
-                resultados.append(resultado)
-                print(f"Sentencia {i}: {resultado}")
-            except Exception as e:
-                resultados.append(None)
-                print(f"Sentencia {i}: ERROR - {e}")
-        
-        # AST Decorado (con valores calculados)
-        print("AST DECORADO (con atributos sintetizados)")
-        
-        if len(sentencias) == 1:
-            print("\nÁrbol decorado con valores:")
-            sentencias[0].imprimir_arbol(con_valores=True, tabla=tabla)
-        else:
-            print("\nÁrbol decorado con valores:")
-            print("PROGRAMA")
-            for i, ast in enumerate(sentencias, 1):
-                print(f"├── Sentencia {i} (resultado={resultados[i-1]}):")
-                ast.imprimir_arbol("│   ", i == len(sentencias), con_valores=True, tabla=tabla)
-        
-        # Tabla de símbolos final
-        tabla.imprimir()
-        
-        print("\n Análisis completado exitosamente")
-        
-    except Exception as e:
-        print(f"\n ERROR: {e}")
+        try:
+            # Solicitar entrada
+            expresion = input(" > ").strip()          
+            # Ignorar líneas vacías
+            if not expresion:
+                continue           
+            # Procesar la sentencia
+            procesar_sentencia(expresion, tabla)
+            
+        except Exception as e:
+            print(f"\n ERROR: {e}")
+
 
 if __name__ == "__main__":
     main()
